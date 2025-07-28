@@ -2,7 +2,7 @@
 
 A digital implementation of Mateloto, a multiplication bingo game invented by Willy Gerardo Murillo Rivas in Costa Rica during the 1980s. This educational game helps children learn multiplication tables while having fun.
 
-[Demo](https://xplorandia/mateloto.html) | [Print Version](https://xplorandia.com/mateloto-printer.html)
+[Demo](https://xplorandia.com/mateloto.html) | [Print Version](https://xplorandia.com/mateloto-printer.html)
 
 ## 🎮 About Mateloto
 
