@@ -153,8 +153,13 @@
             margin-bottom: 0.5rem;
         }
 
-        .next-button:hover {
+        .next-button:hover:not(:disabled) {
             background-color: #229954;
+        }
+
+        .next-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .problem-display {
@@ -910,6 +915,7 @@
                 mode_both: "Ambos",
                 mode_both_desc: "(llama y marca)",
                 next_button: "Siguiente >>",
+                next_button_done: "Listo!",
                 multiplication_label: "Multiplicación:",
                 validate_button: "Validar Cartón",
                 scorecard_label: "Cartón",
@@ -970,6 +976,7 @@
                 mode_both: "Both",
                 mode_both_desc: "(calls and checks)",
                 next_button: "Next >>",
+                next_button_done: "Done!",
                 multiplication_label: "Multiplication:",
                 validate_button: "Validate Card",
                 scorecard_label: "Card",
@@ -1709,24 +1716,29 @@
             }
             
             if (availableProblems.length === 0) {
-			    //todo show message stating all 45 problems have been called (all_called_msg)
+				updateCallNextButtons();
 				return;
 			}
             
             const randomIndex = availableProblems[Math.floor(Math.random() * availableProblems.length)];
             const problem = multiplicationProblems[randomIndex];
+            const showReverse = Math.random() < 0.5 && problem.a !== problem.b;
             
             callerState = callerState.substring(0, randomIndex) + '1' + callerState.substring(randomIndex + 1);
-            calledProblems.push(problem);
+            calledProblems.push({ ...problem, showReverse });
             currentProblemIndex = calledProblems.length - 1;
             
             updateCallerDisplay();
             updateNavigationButtons();
+            updateCallNextButtons();
             updateTriangularGrid();
         }
 
         function navigateProblem(direction) {
-            currentProblemIndex += direction;
+            if (calledProblems.length === 0) return;
+            const nextIndex = currentProblemIndex + direction;
+            if (nextIndex < 0 || nextIndex >= calledProblems.length) return;
+            currentProblemIndex = nextIndex;
             updateCallerDisplay();
             updateNavigationButtons();
         }
@@ -1741,8 +1753,7 @@
             
             if (currentProblemIndex >= 0 && currentProblemIndex < calledProblems.length) {
                 const problem = calledProblems[currentProblemIndex];
-                const showReverse = Math.random() < 0.5 && problem.a !== problem.b;
-                problemDisplay.textContent = showReverse ? 
+                problemDisplay.textContent = problem.showReverse ? 
                     `${problem.b} × ${problem.a}` : 
                     `${problem.a} × ${problem.b}`;
             } else {
@@ -1767,6 +1778,19 @@
                 const button = document.getElementById(id);
                 if (button) {
                     button.disabled = currentProblemIndex >= calledProblems.length - 1;
+                }
+            });
+        }
+
+        function updateCallNextButtons() {
+            const allCalled = calledProblems.length >= 45;
+            document.querySelectorAll('.next-button').forEach(button => {
+                button.disabled = allCalled;
+                const labelSpan = button.querySelector('[data-lang="next_button"]');
+                if (labelSpan) {
+                    labelSpan.textContent = allCalled
+                        ? languages[currentLanguage].next_button_done
+                        : languages[currentLanguage].next_button;
                 }
             });
         }
@@ -2011,23 +2035,6 @@
 			return;
         }
 
-        function generateQRCode() {
-            const qrcodeDiv = document.getElementById('qrcode');
-            qrcodeDiv.innerHTML = '';
-            
-            // Convert caller state to a more compact format for QR
-            const syncData = {
-                state: callerState,
-                timestamp: Date.now()
-            };
-            
-            new QRCode(qrcodeDiv, {
-                text: JSON.stringify(syncData),
-                width: 200,
-                height: 200
-            });
-        }
-
 		function syncWithCode() {
 			const input = document.getElementById('syncCodeInput');
 			const inputValue = input.value.trim();
@@ -2092,7 +2099,9 @@
             currentMode = 'caller';
             showScreen('callerMode');
             createTriangularGrid();
+            updateCallerDisplay();
             updateNavigationButtons();
+            updateCallNextButtons();
         }
 
         function startPlayerMode() {
@@ -2105,7 +2114,9 @@
             currentMode = 'both';
             showScreen('bothMode');
             initializePlayerMode();
+            updateCallerDisplay();
             updateNavigationButtons();
+            updateCallNextButtons();
         }
 
         function initializePlayerMode() {
@@ -2153,6 +2164,32 @@
             playerScorecardNumber = null;
             playerHistory = [];
             playerHistoryIndex = -1;
+
+            // Clear caller problem UI (state is cleared above; DOM is not auto-synced)
+            ['problemDisplay', 'bothProblemDisplay'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '-';
+            });
+            ['problemCounter', 'bothProblemCounter'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '0/0';
+            });
+            const grid = document.getElementById('triangularGrid');
+            if (grid) grid.innerHTML = '';
+
+            // Clear validation / player answer UI leftovers
+            const validateInput = document.getElementById('validateInput');
+            if (validateInput) validateInput.value = '';
+            ['answerInput', 'bothAnswerInput'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            ['multiplicationOptions', 'bothMultiplicationOptions'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+
+            updateCallNextButtons();
             showScreen('modeSelection');
             toggleMenu();
         }
@@ -2189,6 +2226,8 @@
                 }
 				//else default language
             });
+            // Re-apply Done!/Listo! if all problems already called
+            updateCallNextButtons();
         }
 
         // Keyboard support
@@ -2388,8 +2427,6 @@
         // Initialize
         initializeMultiplicationData();
         updateLanguage();
-		console.log(decodeBase32Custom("ibkwj4eq7"));
-		console.log(encodeBase32Custom("100100101110100111011001100100011101100000111"));
     </script>
 </body>
 </html>
