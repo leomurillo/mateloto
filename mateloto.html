@@ -223,7 +223,7 @@
 		
         .multiplication-counter {
             font-size: 1.1rem;
-            margin: 1rem 0;
+            margin: 0.5rem 0;
             color: #666;
         }
 
@@ -297,12 +297,12 @@
             margin-right: 0.5rem;
         }
 
-        .validate-input {
+        .mateloto-input {
             padding: 0.75rem;
             font-size: 1rem;
             border: 1px solid #ddd;
             border-radius: 4px;
-            width: 200px;
+            width: 210px;
         }
 
         /* Player Mode Styles */
@@ -729,7 +729,7 @@
             </div>
 
             <div class="validate-section">
-                <input type="text" class="validate-input" id="validateInput" placeholder="Código del cartón"
+                <input type="text" class="mateloto-input" id="validateInput" placeholder="Código del cartón"
 				       data-lang-placeholder="scorecard_code_placeholder" maxlength="6">
 				<button class="validate-button" onclick="validateScorecard()">
                     <span data-lang="validate_button">Validar Cartón</span>
@@ -854,7 +854,8 @@
             <p data-lang="sync_from_caller_instructions">Muestra el código QR para que jugadores sincronicen los números llamados:</p>
             <div id="qrcode"></div>
             <p data-lang="sync_from_caller_or">O dales este código para que lo ingresen manualmente:</p>
-            <input type="text" class="validate-input" id="syncCodeOutput" placeholder="Código de sincronización">
+            <input type="text" class="mateloto-input" id="syncCodeOutput" placeholder="Código de sincronización"
+			       data-lang-placeholder="sync_code" >
         </div>
     </div>
 	<div id="syncModalToPlayer" class="modal">
@@ -871,7 +872,8 @@
 				<span data-lang="scan_qr_button">Escanear QR</span>
 			</button>
 			<p data-lang="sync_to_player_or">O ingresa el código manualmente:</p>
-			<input type="text" class="validate-input" id="syncCodeInput" placeholder="Código de sincronización">
+			<input type="text" class="mateloto-input" id="syncCodeInput" 
+			       placeholder="Código de sincronización" data-lang-placeholder="sync_code" >
 			<button class="control-button sync-button" onclick="syncWithCode()">
 				<span data-lang="sync_apply">Aplicar</span>
 			</button>
@@ -962,7 +964,8 @@
 				validation_winner: "¡Este cartón es ganador!",
 				validation_no_winner: "Este cartón no ha ganado aún",
 				validation_wins: "Gana con: ",
-				scorecard_code_placeholder: "Código del cartón"
+				scorecard_code_placeholder: "Código del cartón",
+				sync_code: "Código de sincronización"
             },
             en: {
                 menu_reset: "Reset",
@@ -1016,13 +1019,15 @@
 				stop_scanning: "Stop Scanning",
 				camera_error: "Error accessing camera",
 				qr_scan_success: "QR code scanned successfully",
+				sync_completed: "Synchronization complete",
 				scorecard_invalid: "Invalid scorecard code",
 				game_code_invalid: "Sync code invalid",
 				validation_title: "Card Validation",
 				validation_winner: "This card is a winner!",
 				validation_no_winner: "This card hasn't won yet",
 				validation_wins: "Wins with: ",
-				scorecard_code_placeholder: "Card code"
+				scorecard_code_placeholder: "Card code",
+				sync_code: "Sync code"
             }
         };
 
@@ -1722,6 +1727,7 @@
             
             const randomIndex = availableProblems[Math.floor(Math.random() * availableProblems.length)];
             const problem = multiplicationProblems[randomIndex];
+            // Choose factor order once when called so history navigation stays stable
             const showReverse = Math.random() < 0.5 && problem.a !== problem.b;
             
             callerState = callerState.substring(0, randomIndex) + '1' + callerState.substring(randomIndex + 1);
@@ -1750,6 +1756,7 @@
             
             const problemDisplay = document.getElementById(displayIds[0]);
             const counterDisplay = document.getElementById(displayIds[1]);
+            if (!problemDisplay || !counterDisplay) return;
             
             if (currentProblemIndex >= 0 && currentProblemIndex < calledProblems.length) {
                 const problem = calledProblems[currentProblemIndex];
@@ -1760,7 +1767,12 @@
                 problemDisplay.textContent = '-';
             }
             
-            counterDisplay.textContent = `${currentProblemIndex + 1}/${calledProblems.length}`;
+            // Show 0/0 when nothing has been called yet
+            if (calledProblems.length === 0) {
+                counterDisplay.textContent = '0/0';
+            } else {
+                counterDisplay.textContent = `${currentProblemIndex + 1}/${calledProblems.length}`;
+            }
         }
 
         function updateNavigationButtons() {
@@ -1777,13 +1789,18 @@
             nextIds.forEach(id => {
                 const button = document.getElementById(id);
                 if (button) {
-                    button.disabled = currentProblemIndex >= calledProblems.length - 1;
+                    button.disabled = calledProblems.length === 0 || currentProblemIndex >= calledProblems.length - 1;
                 }
             });
         }
 
+        function allProblemsCalled() {
+            // Prefer bitmask so sync-applied state is correct even before history is rebuilt
+            return !callerState.includes('0');
+        }
+
         function updateCallNextButtons() {
-            const allCalled = calledProblems.length >= 45;
+            const allCalled = allProblemsCalled();
             document.querySelectorAll('.next-button').forEach(button => {
                 button.disabled = allCalled;
                 const labelSpan = button.querySelector('[data-lang="next_button"]');
@@ -1793,6 +1810,25 @@
                         : languages[currentLanguage].next_button;
                 }
             });
+        }
+
+        function rebuildCalledProblemsFromState() {
+            // Rebuild history from bitmask (call order is not preserved by sync codes)
+            const previousByIndex = new Map(
+                calledProblems.map(p => [p.index, p])
+            );
+            calledProblems = [];
+            for (let i = 0; i < 45; i++) {
+                if (callerState[i] === '1') {
+                    const problem = multiplicationProblems[i];
+                    const prev = previousByIndex.get(i);
+                    const showReverse = prev
+                        ? !!prev.showReverse
+                        : (Math.random() < 0.5 && problem.a !== problem.b);
+                    calledProblems.push({ ...problem, showReverse });
+                }
+            }
+            currentProblemIndex = calledProblems.length > 0 ? calledProblems.length - 1 : -1;
         }
 
         // Triangular grid
@@ -2061,6 +2097,14 @@
 				
 				// Apply the sync
 				callerState = callerStateToApply;
+				// Keep caller history / Done! button in sync with bitmask (needed for Ambos → Locutor)
+				rebuildCalledProblemsFromState();
+				updateCallerDisplay();
+				updateNavigationButtons();
+				updateCallNextButtons();
+				if (currentMode === 'caller') {
+					updateTriangularGrid();
+				}
 				
 				// First, unchip all numbers (except FREE)
 				for (let row = 0; row < 5; row++) {
@@ -2137,6 +2181,7 @@
         }
 
         function switchToCallerView() {
+            // Switch from Ambos to full Locutor view while preserving called-problem state
             startCallerMode();
         }
 
@@ -2188,6 +2233,16 @@
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = '';
             });
+            // Clear scorecard DOM so stale cells/IDs do not linger across modes
+            ['playerScorecard', 'bothScorecard'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+            // Disable history nav arrows until a new game starts
+            ['prevButton', 'nextButton', 'bothPrevButton', 'bothNextButton'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = true;
+            });
 
             updateCallNextButtons();
             showScreen('modeSelection');
@@ -2215,29 +2270,44 @@
         }
 
         function updateLanguage() {
-            document.querySelectorAll('[data-lang]').forEach(element => {
-                const key = element.getAttribute('data-lang');
-                if (languages[currentLanguage][key]) {
-                    if (element.hasAttribute('data-lang-placeholder')) {
-                        element.placeholder = languages[currentLanguage][key];
-                    } else {
-                        element.innerHTML = languages[currentLanguage][key];
-                    }
-                }
-				//else default language
-            });
-            // Re-apply Done!/Listo! if all problems already called
+			// Handle regular text elements
+			document.querySelectorAll('[data-lang]').forEach(element => {
+				const key = element.getAttribute('data-lang');
+				if (languages[currentLanguage][key]) {
+					element.innerHTML = languages[currentLanguage][key];
+				}
+			});
+			
+			// Handle placeholder elements separately
+			document.querySelectorAll('[data-lang-placeholder]').forEach(element => {
+				const key = element.getAttribute('data-lang-placeholder');
+				if (languages[currentLanguage][key]) {
+					element.placeholder = languages[currentLanguage][key];
+				}
+			});
+
+            // Re-apply Done!/Listo! if all problems already called (updateLanguage resets next_button text)
             updateCallNextButtons();
         }
 
         // Keyboard support
         document.addEventListener('keydown', (e) => {
+            // Do not steal keys while typing in inputs or using form controls
+            const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) {
+                return;
+            }
+
             if (currentMode === 'caller' || currentMode === 'both') {
                 if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
                     navigateProblem(-1);
                 } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
                     navigateProblem(1);
                 } else if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (allProblemsCalled()) return;
                     callNextProblem();
                 }
             }
